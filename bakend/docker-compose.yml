@@ -1,0 +1,42 @@
+# ============================================================================
+#  第 3 步：后端（FastAPI 主应用 + 2 个 MCP 服务，同容器）
+# ============================================================================
+#  构建上下文 = 本目录（build: .）
+#  启动：cd /opt/smartp/backend && docker compose up -d --build
+#
+#  前提：第 1 步已建好 smartp-net 网络
+#        （docker network create smartp-net）
+# ============================================================================
+
+services:
+  backend:
+    build: .
+    image: smartp-backend:1.0.0
+    container_name: smartp-backend
+    restart: unless-stopped
+
+    # 配置来源一：.env 里每个键都变成容器内的环境变量
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Shanghai
+
+    # 配置来源二：把 .env 也挂进容器，行为和本机开发时完全一致
+    #（pydantic-settings 的 env_file=".env" 会读它；环境变量优先级更高，值相同无影响）
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./logs:/app/logs              # 日志挂到宿主机，方便查看/清理
+      - ./uploads:/app/uploads        # 上传的文件（会被索引进 Milvus）
+
+    # 🔴 只暴露给同网络的 nginx，不映射到宿主机。
+    #    想从宿主机直接压测，把下面两行换成 ports: ["127.0.0.1:9900:9900"]
+    expose:
+      - "9900"
+
+    networks:
+      - smartp-net
+
+networks:
+  smartp-net:
+    external: true
+    name: smartp-net

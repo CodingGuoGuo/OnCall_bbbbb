@@ -1,0 +1,62 @@
+# ============================================================================
+#  Prometheus 告警规则
+# ============================================================================
+#  ⚠️ 注意：服务器上 /root/alert_rules.yml 现在是一个【目录】而不是文件
+#     （`ls -ld /root/alert_rules.yml` 显示 drwxr-xr-x）。
+#     docker-compose 把它挂进容器后，Prometheus 读不到规则。
+#     上服务器后先确认那个目录是空的，然后删掉它，用这个文件替换：
+#         ls -la /root/alert_rules.yml          # 确认里面没东西
+#         rm -rf /root/alert_rules.yml          # 确认空目录后再删
+#         # 然后把本文件复制成 /root/alert_rules.yml
+# ============================================================================
+
+groups:
+  - name: aiops-demo
+    rules:
+      # ---------------------------------------------------------------
+      #  采集目标失联 —— 最基础也最重要的告警
+      # ---------------------------------------------------------------
+      - alert: InstanceDown
+        expr: 'up == 0'
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: '实例 {{ $labels.instance }} 失联'
+          description: '{{ $labels.instance }} 已超过 1 分钟无法采集，请检查服务是否存活。'
+
+      # ---------------------------------------------------------------
+      #  CPU 使用率过高
+      # ---------------------------------------------------------------
+      - alert: HostHighCpuLoad
+        expr: '100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80'
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'CPU 使用率过高（{{ $labels.instance }}）'
+          description: 'CPU 使用率已持续 2 分钟超过 80%，当前值 {{ $value }}%。'
+
+      # ---------------------------------------------------------------
+      #  内存使用率过高 —— 这台机器内存吃紧，这条会很有用
+      # ---------------------------------------------------------------
+      - alert: HostHighMemoryUsage
+        expr: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85'
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: '内存使用率过高（{{ $labels.instance }}）'
+          description: '内存使用率已持续 2 分钟超过 85%，当前值 {{ $value }}%。'
+
+      # ---------------------------------------------------------------
+      #  磁盘空间不足
+      # ---------------------------------------------------------------
+      - alert: HostDiskSpaceLow
+        expr: '(1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 85'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: '磁盘空间不足（{{ $labels.instance }}）'
+          description: '挂载点 {{ $labels.mountpoint }} 使用率已超过 85%，当前值 {{ $value }}%。'

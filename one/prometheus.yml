@@ -1,0 +1,31 @@
+# Prometheus 主配置（挂进容器 /etc/prometheus/prometheus.yml）
+
+global:
+  scrape_interval: 15s        # 每 15 秒采集一次
+  evaluation_interval: 15s    # 每 15 秒评估一次告警规则
+  scrape_timeout: 10s
+
+# 告警规则文件（容器里对应 ./alert_rules.yml）
+rule_files:
+  - "alert_rules.yml"
+
+# 告警转发给 Alertmanager（同一 monitoring 网络，用容器服务名解析）
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+# 采集目标
+scrape_configs:
+  # Prometheus 自身指标
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # node_exporter：主机 CPU / 内存 / 磁盘 / 网络指标
+  - job_name: "node_exporter"
+    static_configs:
+      - targets: ["node_exporter:9100"]
+        labels:
+          instance: "host"
+          env:      "demo"

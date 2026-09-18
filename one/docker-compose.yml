@@ -1,0 +1,187 @@
+# ============================================================================
+#  第 1 步：基础设施（数据库 + 向量库 + 监控）
+# ============================================================================
+#  🔴 这个文件必须放在服务器的 /root/ 目录下！
+#     因为下面所有 volumes 都是 ./xxx 的相对路径，而现有的数据就在
+#     /root/pgdata、/root/milvusdata、/root/prometheus_data ... 里。
+#     放到别处 = 找不到数据 = Milvus 变成空库。
+#
+#  启动前先建共享网络（第 2、3 步也要用）：
+#      docker network create smartp-net
+#  然后：
+#      cd /root && docker compose up -d
+# ============================================================================
+
+services:
+  # ==========================================================================
+  #  1. PostgreSQL  —— 账号 postgres / 密码 123321 / 库名 appdb
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "123321"
+      POSTGRES_DB: appdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+
+  # ==========================================================================
+  #  2. Redis  —— 密码 123321
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis_db
+    restart: unless-stopped
+    command: redis-server --requirepass 123321 --user redis on >123321 ~* +@all --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redisdata:/data
+
+  # ==========================================================================
+  #  3. Neo4j  —— 账号 neo4j / 密码 12344321
+  #     （SmartP 本身不用它，是别的用途；不需要可以整段注释掉，能省 ~350MB 内存）
+  # ==========================================================================
+  neo4j:
+    image: neo4j:5-community
+    container_name: neo4j_db
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: "neo4j/12344321"
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"   # Web 界面
+      - "7687:7687"   # Bolt 协议
+    volumes:
+      - ./neo4jdata:/data
+
+  # ==========================================================================
+  #  4. Milvus Standalone —— 向量库（三件套，必须一起起）
+  #     对宿主机暴露 19530（数据口）和 9091（健康/指标口）
+  #     🔴 后端容器就是靠 172.26.55.198:19530 连它的
+  # ==========================================================================
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: milvus_etcd
+    restart: unless-stopped
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ./milvusdata/etcd:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd
+
+  milvus-minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: milvus_minio
+    restart: unless-stopped
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - ./milvusdata/minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+
+  milvus:
+    image: milvusdb/milvus:v2.3.10
+    container_name: milvus_db
+    restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    volumes:
+      - ./milvusdata/milvus:/var/lib/milvus
+    ports:
+      - "19530:19530"   # Milvus 交互端口
+      - "9091:9091"     # 管理/指标端口
+    depends_on:
+      - milvus-etcd
+      - milvus-minio
+
+  # ==========================================================================
+  #  5. Prometheus —— 告警采集（AIOps 的真实数据源）
+  #     宿主机 9190 → 容器 9090（因为 9090 被别的服务占了）
+  #     🔴 prometheus_data 目录属主必须是 nobody(65534)，否则它写不了
+  #        queries.active 会直接 panic 退出。修复命令见 说明.md
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9190:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - ./prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - node_exporter
+    networks:
+      - monitoring
+
+  # ==========================================================================
+  #  6. Node Exporter —— 主机指标（CPU / 内存 / 磁盘）
+  # ==========================================================================
+  node_exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: node_exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    networks:
+      - monitoring
+
+  # ==========================================================================
+  #  7. Alertmanager —— 把 Prometheus 的告警转发给第 3 步的后端
+  #     它的 webhook 指向 smartp-backend:9900，所以它必须挂在 smartp-net 上
+  #     （第 3 步后端起起来之前，这一条转发会失败，属于正常现象）
+  # ==========================================================================
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - monitoring
+      - smartp-net
+
+networks:
+  # 监控三件套自己用
+  monitoring:
+    driver: bridge
+
+  # 和后端/前端的共享网络。这里声明成外部网络，由 `docker network create smartp-net` 建，
+  # 这样 `docker compose down` 不会把它删掉，第 2、3 步能继续用
+  smartp-net:
+    external: true
+    name: smartp-net

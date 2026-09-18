@@ -1,0 +1,45 @@
+# 虚拟环境 / 缓存
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# 🔴 含真实密钥（DashScope key、钉钉 token+SEC）：运行时用 -v 挂载提供，不进镜像
+.env
+
+# 运行期数据（用 volume 挂载，不进镜像）
+logs/
+uploads/
+*.log
+*.pid
+server.log
+mcp_cls.log
+mcp_monitor.log
+
+# 版本控制与编辑器
+.git/
+.gitignore
+.idea/
+.vscode/
+
+# 本地杂项
+_probe_chunks.py
+async_await.py
+yiled_study.py
+test.py
+DEPLOYMENT.md
+
+# 🔴 requirements.txt 是 UTF-16LE 编码，且带一条 -e e:\on_callcode\... 的 Windows 本地路径，
+#    在 Linux 上 pip install -r 必挂。依赖一律走 pyproject.toml，这个文件不进镜像。
+requirements.txt
+
+# 已移到上级目录的编排文件（避免镜像里留一份过期副本）
+docker-compose.yml
+vector-database.yml
+deploy/

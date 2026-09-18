@@ -1,0 +1,25 @@
+# Alertmanager 配置 —— 所有告警转发给 AIOps 自动诊断 webhook
+#
+# 🔴 这里原来是 http://192.168.150.1:9900/...（指向你本机的开发环境），
+#    在公网服务器上根本连不通。现在改成后端容器名 —— 因为 alertmanager
+#    和第 3 步的 smartp-backend 都挂在同一个 smartp-net 网络上，
+#    Docker 内置 DNS 会把它解析到后端容器。
+#
+#    前提：第 3 步启动之前，这条转发会失败，日志里会报 connection refused，
+#    属于正常现象，不用管。
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "aiops-webhook"
+  group_by: ["alertname", "instance"]
+  group_wait: 10s         # 同组告警等 10s 聚合后发送（诊断链路本身有 60s 去重）
+  group_interval: 1m
+  repeat_interval: 1h     # 同一告警最多 1 小时重复通知一次
+
+receivers:
+  - name: "aiops-webhook"
+    webhook_configs:
+      - url: "http://smartp-backend:9900/api/aiops/webhook"
+        send_resolved: false   # 应用侧 resolved 直接跳过，不必发
+        max_alerts: 10

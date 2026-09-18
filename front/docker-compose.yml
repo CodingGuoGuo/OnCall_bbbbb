@@ -1,0 +1,35 @@
+# ============================================================================
+#  第 2 步：前端
+# ============================================================================
+#  直接跑官方 nginx:1.27-alpine + 挂载配置和页面，【不构建镜像】。
+#  好处：以后改页面 / 改 nginx 配置，在服务器上改完 reload 就行，不用重建。
+#
+#  前提：第 1 步已经建好 smartp-net 网络
+#        （docker network create smartp-net）
+#  启动：cd /opt/smartp/frontend && docker compose up -d
+# ============================================================================
+
+services:
+  frontend:
+    image: nginx:1.27-alpine
+    container_name: smartp-frontend
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+
+    # 挂载而不是 COPY：改完宿主机上的文件，docker exec smartp-frontend nginx -s reload 即可生效
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./static:/usr/share/nginx/html:ro
+
+    # 🔴 必须和第 3 步的后端在同一个网络里。
+    #    nginx.conf 的 upstream 写的是 server smartp-backend:9900 ——
+    #    用容器名当域名，只有同网络才能解析。不在同一网络 = 502。
+    networks:
+      - smartp-net
+
+networks:
+  smartp-net:
+    external: true
+    name: smartp-net

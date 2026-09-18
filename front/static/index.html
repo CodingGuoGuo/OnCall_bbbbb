@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartP · 智能告警系统</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+
+<link rel="stylesheet" href="/static/styles.css?v=20260917m">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+
+<body>
+<div class="app" id="app">
+
+  <!-- ==================== 左侧栏 ==================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar__head">
+      <span class="logo">SmartP</span>
+      <button class="icon-btn" id="historySearchBtn" type="button" aria-label="搜索对话" title="搜索对话">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="sidebar__body">
+      <button class="btn btn--new btn--block" id="newChatBtn" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span>新建对话</span>
+      </button>
+
+      <nav class="side-nav" aria-label="功能入口">
+        <button class="side-link" id="uploadPanelBtn" type="button">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+          <span>上传附件</span>
+        </button>
+        <button class="side-link" id="configBtn" type="button">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/>
+          </svg>
+          <span>系统设置</span>
+        </button>
+        <button class="side-link" id="aiOpsSidebarBtn" type="button">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
+          <span>AI Ops 诊断</span>
+        </button>
+      </nav>
+
+      <input class="sidebar__search" id="historySearchInput" type="text" placeholder="搜索历史对话" hidden>
+
+      <div class="sidebar__section">
+        <div class="history" id="chatHistoryList"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ==================== 主区 ==================== -->
+  <main class="main" id="main">
+    <button class="icon-btn main__nav" id="navOpenBtn" type="button" aria-label="打开导航">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
+
+    <div class="thread" id="chatMessages">
+      <div class="welcome" id="welcomeGreeting">
+        <h1>告警和文档，问一句就够</h1>
+        <p>可以查知识库、看 Prometheus 告警，也可以直接让我做一次 AI Ops 诊断。</p>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="composer__box">
+        <textarea class="composer__input" id="messageInput" rows="1" maxlength="1000"
+                  placeholder="给 OnCall 发送消息"></textarea>
+        <div class="composer__bar">
+          <span class="composer__spacer"></span>
+          <button class="send-btn" id="sendButton" type="button" aria-label="发送" title="发送">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 19V5M5 12l7-7 7 7"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <p class="composer__hint">回答基于知识库与告警数据，可能不完整，请结合现场判断。</p>
+    </div>
+  </main>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<input type="file" id="fileInput" hidden accept=".txt,.md,.pdf,.pptx,.docx,.png,.jpg,.jpeg,.bmp,.webp">
+
+<!-- ==================== 上传附件 ==================== -->
+<aside class="drawer" id="uploadDrawer" aria-hidden="true">
+  <header class="drawer__head">
+    <div>
+      <h2 class="drawer__title">上传附件</h2>
+      <p class="drawer__sub">文件仅用于建立索引；下方切片预览为临时展示，刷新页面即消失</p>
+    </div>
+    <div class="drawer__actions">
+      <button class="icon-btn" id="uploadCloseBtn" type="button" aria-label="关闭">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="drawer__body">
+    <!-- 文件选择 -->
+    <div class="upload-file">
+      <button class="upload-file__pick" id="uploadPick" type="button">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+        </svg>
+        <span>点击选择文件</span>
+      </button>
+      <p class="upload-file__hint">支持 .txt / .md / .pdf / .pptx / .docx / 图片，单个不超过 10MB</p>
+      <div class="upload-file__current">
+        <span class="chip" id="uploadFileName">尚未选择文件</span>
+        <button class="icon-btn" id="uploadRemoveBtn" type="button" aria-label="移除文件" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- 切片设置（随切片方式联动显隐，见 app.js applyStrategy） -->
+    <div class="upload-section" id="uploadSection">
+      <p class="sidebar__label">切片设置</p>
+
+      <div class="upload-field">
+        <span class="upload-field__label">切片方式</span>
+        <div class="seg" id="uploadStrategySeg" role="group" aria-label="切片方式">
+          <button class="seg__btn is-active" type="button" data-strategy="general">通用切片</button>
+          <button class="seg__btn" type="button" data-strategy="chain">递归分隔符链</button>
+          <button class="seg__btn" type="button" data-strategy="loop">固定窗口</button>
+          <button class="seg__btn" type="button" data-strategy="parent_child">父子切片</button>
+        </div>
+      </div>
+
+      <!-- 父块依据：仅父子切片出现，固定一条、不可增删 -->
+      <div class="upload-field" id="uploadParentRulesField" hidden>
+        <span class="upload-field__label">父块依据</span>
+        <div class="rules" id="uploadParentRules"></div>
+      </div>
+
+      <!-- 分片依据：固定窗口下整块隐藏；父子切片下标题变为「子块依据」且不可增删 -->
+      <div class="upload-field" id="uploadRulesField">
+        <div class="upload-field__head">
+          <span class="upload-field__label" id="uploadRulesLabel">分片依据</span>
+          <button class="btn btn--ghost btn--sm" id="uploadAddRuleBtn" type="button">＋ 新增依据</button>
+        </div>
+        <div class="rules" id="uploadRules"></div>
+        <p class="upload-field__hint" id="uploadRulesHint">按顺序生效：先按第 1 条切，切不完的片段再交给下一条</p>
+      </div>
+
+      <div class="upload-field upload-field--row">
+        <span class="upload-field__label" id="uploadChunkSizeLabel">分片大小</span>
+        <input class="input" id="uploadChunkSize" type="number" min="50" max="4000" step="50" value="800">
+        <span class="upload-field__unit">字符</span>
+      </div>
+
+      <!-- 父块大小：仅父子切片出现 -->
+      <div class="upload-field upload-field--row" id="uploadParentSizeField" hidden>
+        <span class="upload-field__label">父块大小</span>
+        <input class="input" id="uploadParentSize" type="number" min="100" max="8000" step="100" value="800">
+        <span class="upload-field__unit">字符</span>
+      </div>
+
+      <!-- 重复大小：父子切片下整行从 DOM 移除（该策略恒为 0） -->
+      <div class="upload-field upload-field--row" id="uploadOverlapField">
+        <span class="upload-field__label">重复大小</span>
+        <input class="input" id="uploadOverlap" type="number" min="0" max="3999" step="10" value="100">
+        <span class="upload-field__unit">字符</span>
+      </div>
+
+      <button class="btn btn--primary btn--block" id="uploadSubmitBtn" type="button" disabled>上传并建立索引</button>
+    </div>
+
+    <!-- 本次分片结果（仅存内存，刷新即消失） -->
+    <div class="upload-preview" id="uploadPreview"></div>
+  </div>
+</aside>
+
+<!-- ==================== 系统设置 ==================== -->
+<aside class="drawer" id="cfgDrawer" aria-hidden="true">
+  <header class="drawer__head">
+    <div>
+      <h2 class="drawer__title">系统设置</h2>
+      <p class="drawer__sub">只读展示 · 密钥已脱敏</p>
+    </div>
+    <div class="drawer__actions">
+      <button class="btn btn--ghost btn--sm" id="cfgRefreshBtn" type="button">刷新</button>
+      <button class="icon-btn" id="cfgCloseBtn" type="button" aria-label="关闭">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </header>
+  <div class="drawer__body">
+    <div class="cfg" id="cfgBody"></div>
+  </div>
+</aside>
+
+<!-- ==================== 全屏遮罩（上传中） ==================== -->
+<div class="overlay" id="loadingOverlay">
+  <div class="overlay__box">
+    <svg class="spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+      <path d="M12 3a9 9 0 1 0 9 9"/>
+    </svg>
+    <p class="loading-text">正在上传文件…</p>
+    <p class="loading-subtext"></p>
+  </div>
+</div>
+
+<div class="toasts" id="toastWrap" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script src="/static/app.js?v=20260917m"></script>
+</body>
+</html>
